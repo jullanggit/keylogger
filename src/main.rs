@@ -1,10 +1,5 @@
 use std::fs;
 
-use evdev_rs::{
-    Device, DeviceWrapper, InputEvent, ReadFlag,
-    enums::{EV_KEY::*, EventCode},
-};
-
 fn main() {
     let inputs = fs::read_dir("/dev/input").unwrap();
 
@@ -42,12 +37,5 @@ fn main() {
         }
     }
 }
-
-// fn to_letter(key: Key) -> char {
-//     match key {
-//         _ => {}
-//     }
-//     todo!()
-// }
 
 struct Log {}
