@@ -64,6 +64,7 @@ fn main() {
                     let direction = if event.value == 0 {
                         KeyDirection::Up
                     } else {
+                        // For some reason KeyDirection doesnt impl PartialEq, so we do this here
                         // Get character
                         dbg!(state.key_get_utf8(keycode));
 
