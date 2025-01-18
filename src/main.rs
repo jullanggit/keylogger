@@ -61,12 +61,12 @@ fn main() {
                     // Evdev -> xkb keycode
                     let keycode = (key as u32 + 8).into(); // Keycode offset
 
-                    // Get character
-                    dbg!(state.key_get_utf8(keycode));
-
                     let direction = if event.value == 0 {
                         KeyDirection::Up
                     } else {
+                        // Get character
+                        dbg!(state.key_get_utf8(keycode));
+
                         KeyDirection::Down
                     };
 
@@ -74,7 +74,7 @@ fn main() {
                     state.update_key(keycode.into(), direction);
                 }
             }
-            Err(e) => eprintln!("{e}"),
+            Err(e) => continue,
         }
     }
 }
