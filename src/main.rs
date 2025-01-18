@@ -1,3 +1,5 @@
+#![feature(let_chains)]
+
 use std::fs;
 
 use evdev_rs::{
@@ -6,7 +8,7 @@ use evdev_rs::{
     ReadFlag, // enum*, EventCde},
     enums::EventCode,
 };
-use xkbcommon_rs::{Context, Keymap, State, xkb_keymap::RuleNames, xkb_state::KeyDirection};
+use xkbcommon::xkb::{Context, KeyDirection, Keymap, State};
 
 fn get_keyboard() -> Device {
     let inputs = fs::read_dir("/dev/input").unwrap();
@@ -31,20 +33,9 @@ fn get_keyboard() -> Device {
 }
 
 fn init_xkbcommon() -> State {
-    let context = Context::new(0).unwrap();
-    let keymap = Keymap::new_from_names(
-        context,
-        Some(RuleNames {
-            rules: None,
-            model: Some("pc105".into()),
-            layout: Some("ch".into()),
-            variant: Some("de".into()),
-            options: None,
-        }),
-        0,
-    )
-    .unwrap();
-    State::new(keymap)
+    let context = Context::new(0);
+    let keymap = Keymap::new_from_names(&context, "", "pc105", "ch", "de", None, 0).unwrap();
+    State::new(&keymap)
 }
 
 fn main() {
@@ -63,23 +54,26 @@ fn main() {
 
         match event {
             Ok(event) => {
-                if let EventCode::EV_KEY(key) = event.event_code {
-                    state.update_key(
-                        key as u32 + 8,
-                        if event.value == 0 {
-                            KeyDirection::Up
-                        } else {
-                            KeyDirection::Down
-                        },
-                    );
-                    if let Some(chars) = state.key_get_utf8(key as u32) {
-                        println!("Char: {}", chars[0] as char);
+                // If it is a keypress and not of type repeat
+                if let EventCode::EV_KEY(key) = event.event_code
+                    && event.value != 2
+                {
+                    // Evdev -> xkb keycode
+                    let keycode = (key as u32 + 8).into(); // Keycode offset
+
+                    // Get character
+                    dbg!(state.key_get_utf8(keycode));
+
+                    let direction = if event.value == 0 {
+                        KeyDirection::Up
                     } else {
-                        println!("No Char Mapping");
-                    }
+                        KeyDirection::Down
+                    };
+
+                    // Update state
+                    state.update_key(keycode.into(), direction);
                 }
             }
-
             Err(e) => eprintln!("{e}"),
         }
     }
