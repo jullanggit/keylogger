@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-evdev-rs = "0.6.1"
+evdev = { version = "0.12.2", features = ["tokio"] }
+tokio = { version = "1.43.0", features = ["macros", "rt"] }
 xkbcommon = "0.8.0"

@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, fs, io::BufWriter};
 
-use evdev_rs::{Device, DeviceWrapper, ReadFlag, enums::EventCode};
+use evdev::{Device, EventType, InputEventKind};
 use xkbcommon::xkb::{Context, KeyDirection, Keymap, State};
 
 #[derive(Default, Debug)]
@@ -52,7 +52,7 @@ fn get_keyboard() -> Device {
         .filter_map(|entry| entry.ok())
         .map(|entry| entry.path())
         .find(|path| {
-            if let Ok(device) = Device::new_from_path(path) {
+            if let Ok(device) = Device::open(path) {
                 if let Some(name) = device.name() {
                     name.contains("evremap")
                 } else {
@@ -64,7 +64,7 @@ fn get_keyboard() -> Device {
         })
         .expect("Failed to find keyboard input device");
 
-    Device::new_from_path(keyboard_path).unwrap()
+    Device::open(keyboard_path).unwrap()
 }
 
 fn init_xkbcommon() -> State {
@@ -73,7 +73,8 @@ fn init_xkbcommon() -> State {
     State::new(&keymap)
 }
 
-fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let keyboard = get_keyboard();
     let mut state = init_xkbcommon();
 
@@ -81,40 +82,34 @@ fn main() {
 
     let mut log = Log::default();
 
+    let mut events = keyboard.into_event_stream()?;
     loop {
-        let event = keyboard
-            .next_event(ReadFlag::NORMAL)
-            .map(|(_status, event)| event);
+        let event = events.next_event().await?;
 
-        match event {
-            Ok(event) => {
-                // If it is a keypress and not of type repeat
-                if let EventCode::EV_KEY(key) = event.event_code
-                    && event.value != 2
-                {
-                    // Evdev -> xkb keycode
-                    let keycode = (key as u32 + 8).into(); // Keycode offset
+        // If it is a keypress and not of type repeat
+        if let InputEventKind::Key(key) = event.kind()
+            && event.value() != 2
+        {
+            // Evdev -> xkb keycode
+            let keycode = (key.code() as u32 + 8).into(); // Keycode offset
 
-                    // Pressed
-                    if event.value == 1 {
-                        let string = state.key_get_utf8(keycode);
-                        if let Some(char) = string.chars().next() {
-                            log.push(char);
-                            dbg!(&log);
-                        }
-                    }
-
-                    let direction = if event.value == 0 {
-                        KeyDirection::Up
-                    } else {
-                        KeyDirection::Down
-                    };
-
-                    // Update state
-                    state.update_key(keycode.into(), direction);
+            // Pressed
+            if event.value() == 1 {
+                let string = state.key_get_utf8(keycode);
+                if let Some(char) = string.chars().next() {
+                    log.push(char);
+                    dbg!(&log);
                 }
             }
-            Err(_) => continue,
+
+            let direction = if event.value() == 0 {
+                KeyDirection::Up
+            } else {
+                KeyDirection::Down
+            };
+
+            // Update state
+            state.update_key(keycode.into(), direction);
         }
     }
 }
