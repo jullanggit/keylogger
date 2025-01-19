@@ -4,7 +4,7 @@
 use std::{
     array,
     collections::HashMap,
-    fs,
+    env, fs,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -86,24 +86,21 @@ impl Log {
     }
 }
 
-fn get_keyboard() -> Device {
+fn get_keyboard(name: &str) -> Device {
     let inputs = fs::read_dir("/dev/input").unwrap();
 
     let keyboard_path = inputs
         .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .find(|path| {
-            Device::open(path)
-                .is_ok_and(|device| device.name().is_some_and(|name| name.contains("evremap")))
-        })
+        .find(|path| Device::open(path).is_ok_and(|device| device.name() == Some(name)))
         .expect("Failed to find keyboard input device");
 
     Device::open(keyboard_path).unwrap()
 }
 
-fn init_xkbcommon() -> State {
+fn init_xkbcommon(model: &str, layout: &str, variant: &str) -> State {
     let context = Context::new(0);
-    let keymap = Keymap::new_from_names(&context, "", "pc105", "ch", "de", None, 0).unwrap();
+    let keymap = Keymap::new_from_names(&context, "", model, layout, variant, None, 0).unwrap();
     State::new(&keymap)
 }
 
@@ -111,8 +108,15 @@ fn init_xkbcommon() -> State {
 #[expect(clippy::infinite_loop)]
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let keyboard = get_keyboard();
-    let mut state = init_xkbcommon();
+    let mut args = env::args();
+    let _program = args.next();
+
+    let keyboard = get_keyboard(&args.next().unwrap());
+    let mut state = init_xkbcommon(
+        &args.next().unwrap(),
+        &args.next().unwrap(),
+        &args.next().unwrap_or_default(),
+    );
 
     println!("Listening for key events on: {}", keyboard.name().unwrap());
 
