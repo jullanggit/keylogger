@@ -39,8 +39,8 @@ impl Log {
                 .map(|(key, value)| format!("{value} {key}"))
                 // .join('\n)
                 .fold(String::new(), |mut acc, item| {
-                    acc.push('\n');
                     acc.push_str(&item);
+                    acc.push('\n');
                     acc
                 })
         });
