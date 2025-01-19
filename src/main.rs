@@ -1,4 +1,5 @@
 #![feature(let_chains)]
+#![allow(clippy::cargo_common_metadata)]
 
 use std::{
     array,
@@ -19,17 +20,23 @@ struct Log {
 }
 impl Log {
     fn push(&mut self, new: char) {
-        *self.ngrams[0].entry(new.into()).or_insert(0) += 1;
-        *self.ngrams[1]
+        let unigrams = self.ngrams[0].entry(new.into()).or_insert(0);
+        *unigrams = unigrams.checked_add(1).unwrap();
+
+        let bigrams = self.ngrams[1]
             .entry([self.current[1], new].iter().collect())
-            .or_insert(0) += 1;
-        *self.ngrams[2]
+            .or_insert(0);
+        *bigrams = bigrams.checked_add(1).unwrap();
+
+        let trigrams = self.ngrams[2]
             .entry([self.current[0], self.current[1], new].iter().collect())
-            .or_insert(0) += 1;
+            .or_insert(0);
+        *trigrams = trigrams.checked_add(1).unwrap();
 
         self.current[0] = self.current[1];
         self.current[1] = new;
     }
+    #[expect(clippy::arithmetic_side_effects)]
     fn serialize(&self) {
         let serialized_ngrams = self.ngrams.iter().map(|gram| {
             gram.iter()
@@ -50,6 +57,7 @@ impl Log {
             fs::write(path, serialized_ngram).unwrap();
         }
     }
+    #[expect(clippy::arithmetic_side_effects)]
     fn deserialize() -> Self {
         let ngrams = array::from_fn(|n| {
             let path = format!("/home/julius/ngrams/{}-grams.txt", n + 1);
@@ -82,18 +90,11 @@ fn get_keyboard() -> Device {
     let inputs = fs::read_dir("/dev/input").unwrap();
 
     let keyboard_path = inputs
-        .filter_map(|entry| entry.ok())
+        .filter_map(Result::ok)
         .map(|entry| entry.path())
         .find(|path| {
-            if let Ok(device) = Device::open(path) {
-                if let Some(name) = device.name() {
-                    name.contains("evremap")
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
+            Device::open(path)
+                .is_ok_and(|device| device.name().is_some_and(|name| name.contains("evremap")))
         })
         .expect("Failed to find keyboard input device");
 
@@ -106,6 +107,8 @@ fn init_xkbcommon() -> State {
     State::new(&keymap)
 }
 
+// Background serialization loop
+#[expect(clippy::infinite_loop)]
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let keyboard = get_keyboard();
@@ -135,14 +138,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             && event.value() != 2
         {
             // Evdev -> xkb keycode
-            let keycode = (key.code() as u32 + 8).into(); // Keycode offset
+            let keycode = u32::from(key.code().wrapping_add(8)).into(); // Keycode offset
 
             // Pressed
             if event.value() == 1 {
                 let string = state.key_get_utf8(keycode);
                 if let Some(char) = string.chars().next() {
                     log.lock().unwrap().push(char);
-                    dbg!(&log);
                 }
             }
 
@@ -153,7 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             // Update state
-            state.update_key(keycode.into(), direction);
+            state.update_key(keycode, direction);
         }
     }
 }
