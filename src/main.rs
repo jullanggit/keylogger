@@ -1,8 +1,15 @@
 #![feature(let_chains)]
 
-use std::{collections::HashMap, fs, io::BufWriter};
+use std::{
+    array,
+    collections::HashMap,
+    fs,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
-use evdev::{Device, EventType, InputEventKind};
+use evdev::{Device, InputEventKind};
+use tokio::time;
 use xkbcommon::xkb::{Context, KeyDirection, Keymap, State};
 
 #[derive(Default, Debug)]
@@ -27,7 +34,7 @@ impl Log {
         let serialized_ngrams = self.ngrams.iter().map(|gram| {
             gram.iter()
                 // Process special characters
-                .map(|(key, value)| (key.replace('\n', "\\n").replace('\\', "\\\\"), value))
+                .map(|(key, value)| (key.replace('\\', "\\\\").replace('\r', "\\n"), value))
                 // Format key & value
                 .map(|(key, value)| format!("{value} {key}"))
                 // .join('\n)
@@ -39,8 +46,34 @@ impl Log {
         });
 
         for (n, serialized_ngram) in serialized_ngrams.enumerate() {
-            let path = format!("~/ngrams/{}-grams.txt", n + 1);
+            let path = format!("/home/julius/ngrams/{}-grams.txt", n + 1);
             fs::write(path, serialized_ngram).unwrap();
+        }
+    }
+    fn deserialize() -> Self {
+        let ngrams = array::from_fn(|n| {
+            let path = format!("/home/julius/ngrams/{}-grams.txt", n + 1);
+            let serialized_ngram = fs::read_to_string(path).unwrap();
+
+            serialized_ngram
+                .lines()
+                // Split into key & value
+                .map(|line| {
+                    let mut split = line.split(' ');
+                    let value = split.next().unwrap();
+                    let key = split.next().unwrap();
+                    (key, value)
+                })
+                // Parse value
+                .map(|(key, value)| (key, value.parse().unwrap()))
+                // Process special characters
+                .map(|(key, value)| (key.replace("\\n", "\r").replace("\\\\", "\\"), value))
+                .collect()
+        });
+
+        Self {
+            ngrams,
+            ..Default::default()
         }
     }
 }
@@ -80,7 +113,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Listening for key events on: {}", keyboard.name().unwrap());
 
-    let mut log = Log::default();
+    let log = Arc::new(Mutex::new(Log::deserialize()));
+
+    // Background task for serialization
+    let log_clone = Arc::clone(&log);
+    tokio::spawn(async move {
+        let mut interval = time::interval(Duration::from_secs(5));
+
+        loop {
+            interval.tick().await;
+            log_clone.lock().unwrap().serialize();
+        }
+    });
 
     let mut events = keyboard.into_event_stream()?;
     loop {
@@ -97,7 +141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if event.value() == 1 {
                 let string = state.key_get_utf8(keycode);
                 if let Some(char) = string.chars().next() {
-                    log.push(char);
+                    log.lock().unwrap().push(char);
                     dbg!(&log);
                 }
             }

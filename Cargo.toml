@@ -5,5 +5,5 @@ edition = "2024"
 
 [dependencies]
 evdev = { version = "0.12.2", features = ["tokio"] }
-tokio = { version = "1.43.0", features = ["macros", "rt"] }
+tokio = { version = "1.43.0", features = ["macros", "rt", "time"] }
 xkbcommon = "0.8.0"
