@@ -66,11 +66,11 @@ impl Log {
             serialized_ngram
                 .lines()
                 // Split into key & value
-                .map(|line| {
+                .filter_map(|line| {
                     let mut split = line.split(' ');
-                    let value = split.next().unwrap();
-                    let key = split.next().unwrap();
-                    (key, value)
+                    let value = split.next()?;
+                    let key = split.next()?;
+                    Some((key, value))
                 })
                 // Parse value
                 .map(|(key, value)| (key, value.parse().unwrap()))
