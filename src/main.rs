@@ -92,7 +92,11 @@ fn get_keyboard(name: &str) -> Device {
     let keyboard_path = inputs
         .filter_map(Result::ok)
         .map(|entry| entry.path())
-        .find(|path| Device::open(path).is_ok_and(|device| device.name() == Some(name)))
+        .find(|path| {
+            Device::open(path).is_ok_and(|device| {
+                device.name().map(|dev_name| dev_name.contains(name)) == Some(true)
+            })
+        })
         .expect("Failed to find keyboard input device");
 
     Device::open(keyboard_path).unwrap()
