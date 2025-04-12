@@ -86,15 +86,27 @@ impl Log {
     }
 }
 
-fn get_keyboard(name: &str) -> Device {
+fn get_keyboard(name: &str, exact: &str) -> Device {
     let inputs = fs::read_dir("/dev/input").unwrap();
+
+    let exact = match exact {
+        "exact" => true,
+        "approximate" => false,
+        other => panic!("unknown option: {other}"),
+    };
 
     let keyboard_path = inputs
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .find(|path| {
             Device::open(path).is_ok_and(|device| {
-                device.name().map(|dev_name| dev_name.contains(name)) == Some(true)
+                device.name().map(|dev_name| {
+                    if exact {
+                        dev_name == name
+                    } else {
+                        dev_name.contains(name)
+                    }
+                }) == Some(true)
             })
         })
         .expect("Failed to find keyboard input device");
@@ -115,7 +127,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args();
     let _program = args.next();
 
-    let keyboard = get_keyboard(&args.next().unwrap());
+    let keyboard = get_keyboard(&args.next().unwrap(), &args.next().unwrap());
     let mut state = init_xkbcommon(
         &args.next().unwrap(),
         &args.next().unwrap(),
