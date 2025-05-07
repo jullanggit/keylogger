@@ -37,7 +37,7 @@ impl Log {
         self.current[1] = new;
     }
     #[expect(clippy::arithmetic_side_effects)]
-    fn serialize(&self) {
+    fn serialize(&self, folder: &str) {
         let serialized_ngrams = self.ngrams.iter().map(|gram| {
             gram.iter()
                 // Process special characters
@@ -53,14 +53,14 @@ impl Log {
         });
 
         for (n, serialized_ngram) in serialized_ngrams.enumerate() {
-            let path = format!("/home/julius/ngrams/{}-grams.txt", n + 1);
+            let path = format!("{folder}/{}-grams.txt", n + 1);
             fs::write(path, serialized_ngram).unwrap();
         }
     }
     #[expect(clippy::arithmetic_side_effects)]
-    fn deserialize() -> Self {
+    fn deserialize(folder: &str) -> Self {
         let ngrams = array::from_fn(|n| {
-            let path = format!("/home/julius/ngrams/{}-grams.txt", n + 1);
+            let path = format!("{folder}/{}-grams.txt", n + 1);
             let serialized_ngram = fs::read_to_string(path).unwrap();
 
             serialized_ngram
@@ -82,6 +82,14 @@ impl Log {
         Self {
             ngrams,
             ..Default::default()
+        }
+    }
+    fn combine(&mut self, other: Self) {
+        for i in 0..self.ngrams.len() {
+            other.ngrams[i]
+                .clone()
+                .into_iter()
+                .for_each(|(key, value)| *self.ngrams[i].entry(key).or_insert(0) += value);
         }
     }
 }
@@ -127,7 +135,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args();
     let _program = args.next();
 
-    let keyboard = get_keyboard(&args.next().unwrap(), &args.next().unwrap());
+    let keyboard_name = args.next().unwrap();
+
+    // combine command
+    if keyboard_name == "combine" {
+        let mut current = Log::deserialize("/home/julius/ngrams");
+        let other = Log::deserialize(&args.next().unwrap());
+        current.combine(other);
+        current.serialize(&args.next().unwrap());
+
+        return;
+    }
+
+    let keyboard = get_keyboard(&keyboard_name, &args.next().unwrap());
     let mut state = init_xkbcommon(
         &args.next().unwrap(),
         &args.next().unwrap(),
@@ -136,7 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Listening for key events on: {}", keyboard.name().unwrap());
 
-    let log = Arc::new(Mutex::new(Log::deserialize()));
+    let log = Arc::new(Mutex::new(Log::deserialize("/home/julius/ngrams")));
 
     // Background task for serialization
     let log_clone = Arc::clone(&log);
@@ -145,7 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         loop {
             interval.tick().await;
-            log_clone.lock().unwrap().serialize();
+            log_clone.lock().unwrap().serialize("/home/julius/ngrams");
         }
     });
 
